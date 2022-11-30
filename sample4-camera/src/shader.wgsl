@@ -21,7 +21,7 @@ fn vs_main(
 ) -> VertexOutput {
     var out: VertexOutput;
 
-    out.clip_position = camera.view * camera.projection * vec4<f32>(vs_in.position, 1.0);
+    out.clip_position = camera.projection * camera.view * vec4<f32>(vs_in.position, 1.0);
     out.color = vec3<f32>(vs_in.position);
 
     return out;

@@ -33,26 +33,19 @@ impl Vertex {
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 struct CameraUniform {
-    // We can't use cgmath with bytemuck directly so we'll have
+    // We can't use Matrix4 with bytemuck directly so we'll have
     // to convert the Matrix4 into a 4x4 f32 array
-    view: [[f32; 4]; 4],
-    projection: [[f32; 4]; 4],
+    view: [f32; 16],
+    projection: [f32; 16],
 }
 
 impl CameraUniform {
     fn new() -> Self {
-        use cgmath::SquareMatrix;
-
         Self {
-            view: cgmath::Matrix4::identity().into(),
-            projection: cgmath::Matrix4::identity().into(),
+            view: *glam::Mat4::IDENTITY.as_ref(),
+            projection: *glam::Mat4::IDENTITY.as_ref(),
         }
     }
-
-    // fn update_view_proj(&mut self, new_view: &cgmath::Matrix4, new_projection: &cgmath::Matrix4) {
-    //     self.view = new_view.into();
-    //     self.projection = new_projection.into();
-    // }
 }
 
 fn main() {
@@ -215,10 +208,10 @@ fn main() {
         multiview: None,
     });
 
-    let mut camera_pos = cgmath::Point3::<f32>::new(0.0, 0.0, -0.5);
-    let mut camera_forward = cgmath::Vector3::<f32>::new(0.0, 0.0, -1.0);
-    let mut camera_right = cgmath::Vector3::<f32>::new(1.0, 0.0, 0.0);
-    let mut camera_up = cgmath::Vector3::<f32>::new(0.0, 1.0, 0.0);
+    let mut camera_pos = glam::Vec3::new(0.0, 0.0, 1.5);
+    let mut camera_forward = glam::Vec3::new(0.0, 0.0, -1.0);
+    let mut camera_right = glam::Vec3::new(1.0, 0.0, 0.0);
+    let mut camera_up = glam::Vec3::new(0.0, 1.0, 0.0);
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {
@@ -249,46 +242,33 @@ fn main() {
 
             WindowEvent::KeyboardInput {
                 input: KeyboardInput {
-                    state: ElementState::Pressed,
-                    virtual_keycode: Some(VirtualKeyCode::W),
+                    state,
+                    virtual_keycode: Some(key_code),
                     ..
                 },
                 ..
             } => {
-                camera_pos = camera_pos + camera_forward;
-            },
+                if *state == ElementState::Pressed {
+                    match key_code {
+                        VirtualKeyCode::W => {
+                            camera_pos = camera_pos + camera_forward;
+                        },
 
-            WindowEvent::KeyboardInput {
-                input: KeyboardInput {
-                    state: ElementState::Pressed,
-                    virtual_keycode: Some(VirtualKeyCode::S),
-                    ..
-                },
-                ..
-            } => {
-                camera_pos = camera_pos - camera_forward;
-            },
+                        VirtualKeyCode::S => {
+                            camera_pos = camera_pos - camera_forward;
+                        },
 
-            WindowEvent::KeyboardInput {
-                input: KeyboardInput {
-                    state: ElementState::Pressed,
-                    virtual_keycode: Some(VirtualKeyCode::A),
-                    ..
-                },
-                ..
-            } => {
-                camera_pos = camera_pos - camera_right;
-            },
+                        VirtualKeyCode::A => {
+                            camera_pos = camera_pos - camera_right;
+                        },
 
-            WindowEvent::KeyboardInput {
-                input: KeyboardInput {
-                    state: ElementState::Pressed,
-                    virtual_keycode: Some(VirtualKeyCode::D),
-                    ..
-                },
-                ..
-            } => {
-                camera_pos = camera_pos + camera_right;
+                        VirtualKeyCode::D => {
+                            camera_pos = camera_pos + camera_right;
+                        },
+
+                        _ => (),
+                    }
+                }
             },
 
             _ => {}
@@ -311,11 +291,11 @@ fn main() {
 
             let camera_target = camera_pos + camera_forward;
 
-            let view_matrix = cgmath::Matrix4::look_at_rh(camera_pos, camera_target, camera_up);
-            let projection_matrix = cgmath::perspective(cgmath::Deg(fov_y), aspect_ratio, z_near, z_far);
+            let view_matrix = glam::Mat4::look_at_rh(camera_pos, camera_target, camera_up);
+            let projection_matrix = glam::Mat4::perspective_rh_gl(f32::to_radians(fov_y), aspect_ratio, z_near, z_far);
 
-            camera_uniform.projection = projection_matrix.into();
-            camera_uniform.view = view_matrix.into();
+            camera_uniform.projection = *projection_matrix.as_ref();
+            camera_uniform.view = *view_matrix.as_ref();
 
             queue.write_buffer(
                 &camera_buffer,
