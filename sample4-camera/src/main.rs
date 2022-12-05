@@ -53,7 +53,12 @@ fn main() {
 
     let event_loop = EventLoop::new();
 
-    let window = WindowBuilder::new().build(&event_loop).unwrap();
+    let mut window_builder = WindowBuilder::new();
+
+    window_builder = window_builder.with_title("Sample 4: Camera");
+    window_builder = window_builder.with_min_inner_size(winit::dpi::PhysicalSize::new(800, 600));
+
+    let window = window_builder.build(&event_loop).unwrap();
 
     let size = window.inner_size();
 
@@ -70,6 +75,10 @@ fn main() {
             force_fallback_adapter: false,
         },
     ).block_on().unwrap();
+
+    let adapter_info = adapter.get_info();
+
+    println!("Adapter:\n\tname: {}\n\tdriver: {}\n\tbackend: {:?}\n", adapter_info.name, adapter_info.driver, adapter_info.backend);
 
     let (device, queue) = adapter.request_device(
         &wgpu::DeviceDescriptor {
