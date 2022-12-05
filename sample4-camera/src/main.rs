@@ -5,8 +5,8 @@ use winit::{
 };
 
 use pollster::FutureExt as _;
-
 use wgpu::util::DeviceExt;
+use std::time::Instant;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -56,7 +56,7 @@ fn main() {
     let mut window_builder = WindowBuilder::new();
 
     window_builder = window_builder.with_title("Sample 4: Camera");
-    window_builder = window_builder.with_min_inner_size(winit::dpi::PhysicalSize::new(800, 600));
+    window_builder = window_builder.with_min_inner_size(winit::dpi::PhysicalSize::new(1024, 768));
 
     let window = window_builder.build(&event_loop).unwrap();
 
@@ -79,6 +79,12 @@ fn main() {
     let adapter_info = adapter.get_info();
 
     println!("Adapter:\n\tname: {}\n\tdriver: {}\n\tbackend: {:?}\n", adapter_info.name, adapter_info.driver, adapter_info.backend);
+
+    window.set_cursor_grab(winit::window::CursorGrabMode::Confined)
+        .or_else(|_e| window.set_cursor_grab(winit::window::CursorGrabMode::Locked))
+        .unwrap();
+
+    window.set_cursor_visible(false);
 
     let (device, queue) = adapter.request_device(
         &wgpu::DeviceDescriptor {
@@ -218,9 +224,16 @@ fn main() {
     });
 
     let mut camera_pos = glam::Vec3::new(0.0, 0.0, 1.5);
-    let mut camera_forward = glam::Vec3::new(0.0, 0.0, -1.0);
     let mut camera_right = glam::Vec3::new(1.0, 0.0, 0.0);
-    let mut camera_up = glam::Vec3::new(0.0, 1.0, 0.0);
+    let camera_up = glam::Vec3::new(0.0, 1.0, 0.0);
+
+    let mut camera_forward = camera_up.cross(camera_right).normalize();
+
+    const CAMERA_FOV: f32 = 45.0;
+
+    const CAMERA_ROTATE_SPEED: f32 = 10.0;
+
+    let mut last_frame_inst = Instant::now();
 
     const LEFT: u32 = 1 << 1;
     const RIGHT: u32 = 1 << 2;
@@ -307,6 +320,30 @@ fn main() {
                 }
             },
 
+            WindowEvent::CursorMoved {
+                position: mouse_position,
+                ..
+            } => {
+                let delta_time = last_frame_inst.elapsed().as_secs_f32();
+
+                last_frame_inst = Instant::now();
+
+                let screen_center = glam::Vec2::new(size.width as f32 / 2.0, size.height as f32 / 2.0);
+                let current_mouse_position = glam::Vec2::new(mouse_position.x as f32, mouse_position.y as f32);
+                let mouse_delta = screen_center - current_mouse_position;
+
+                window.set_cursor_position(winit::dpi::PhysicalPosition::new(screen_center.x as u32, screen_center.y as u32)).unwrap();
+
+                let horizontal_angle = (mouse_delta.x / size.width as f32 / 2.0) * delta_time * 100.0 * CAMERA_FOV;
+                let vertical_angle = (mouse_delta.y / size.height as f32 / 2.0) * delta_time * 100.0 * CAMERA_FOV;
+
+                camera_forward = glam::Mat3::from_axis_angle(camera_right.normalize(), f32::to_radians(vertical_angle)) * camera_forward;
+
+                camera_forward = glam::Mat3::from_axis_angle(camera_up.normalize(), f32::to_radians(horizontal_angle)) * camera_forward;
+
+                camera_right = camera_forward.cross(camera_up);
+            },
+
             _ => {}
         },
 
@@ -340,7 +377,8 @@ fn main() {
             let aspect_ratio = config.width as f32 / config.height as f32;
             let z_near = 0.1;
             let z_far = 100.0;
-            let fov_y = 45.0;
+
+            let fov_y = CAMERA_FOV;
 
             let camera_target = camera_pos + camera_forward;
 
