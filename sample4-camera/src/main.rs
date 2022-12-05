@@ -48,6 +48,76 @@ impl CameraUniform {
     }
 }
 
+struct Camera {
+    position: glam::Vec3,
+    up: glam::Vec3,
+    right: glam::Vec3,
+    forward: glam::Vec3,
+
+    fov_y: f32,
+    aspect_ratio: f32,
+
+    z_near: f32,
+    z_far: f32,
+
+    view_matrix: glam::Mat4,
+    projection_matrix: glam::Mat4,
+}
+
+impl Camera {
+    fn set_aspect_ratio(&mut self, aspect_ratio: f32) -> &mut Self {
+        self.aspect_ratio = aspect_ratio;
+
+        self.update_matrices();
+
+        self
+    }
+
+    fn translate(&mut self, delta_pos: glam::Vec3) -> &mut Self {
+        self.position += delta_pos;
+
+        self.update_matrices();
+
+        self
+    }
+
+    fn rotate(&mut self, horizontal_angle: f32, vertical_angle: f32) -> &mut Self {
+        self.forward = glam::Mat3::from_axis_angle(self.right.normalize(), f32::to_radians(vertical_angle)) * self.forward;
+
+        self.forward = glam::Mat3::from_axis_angle(self.up.normalize(), f32::to_radians(horizontal_angle)) * self.forward;
+
+        self.right = glam::Mat3::from_axis_angle(self.up.normalize(), f32::to_radians(horizontal_angle)) * self.right;
+
+        self.update_matrices();
+
+        self
+    }
+
+    fn update_matrices(&mut self) -> &mut Self {
+        self.view_matrix = glam::Mat4::look_at_rh(self.position, self.forward, self.up);
+        self.projection_matrix = glam::Mat4::perspective_rh_gl(f32::to_radians(self.fov_y), self.aspect_ratio, self.z_near, self.z_far);
+
+        self
+    }
+}
+
+impl Default for Camera {
+    fn default() -> Camera {
+        Camera {
+            position: glam::Vec3::ZERO,
+            up: glam::Vec3::Y,
+            right: glam::Vec3::X,
+            forward: glam::Vec3::NEG_Z,
+            fov_y: 45.0,
+            aspect_ratio: 1.0,
+            z_near: 0.01,
+            z_far: 100.0,
+            view_matrix: glam::Mat4::IDENTITY,
+            projection_matrix: glam::Mat4::IDENTITY,
+        }
+    }
+}
+
 fn main() {
     env_logger::init();
 
@@ -133,7 +203,6 @@ fn main() {
     );
 
     let mut camera_uniform = CameraUniform::new();
-    // camera_uniform.update_view_proj(&camera);
 
     let camera_buffer = device.create_buffer_init(
         &wgpu::util::BufferInitDescriptor {
@@ -223,13 +292,16 @@ fn main() {
         multiview: None,
     });
 
-    let mut camera_pos = glam::Vec3::new(0.0, 0.0, 1.5);
-    let mut camera_right = glam::Vec3::new(1.0, 0.0, 0.0);
-    let camera_up = glam::Vec3::new(0.0, 1.0, 0.0);
-
-    let mut camera_forward = camera_up.cross(camera_right).normalize();
-
-    const CAMERA_FOV: f32 = 45.0;
+    let mut camera = Camera {
+        position: glam::Vec3::new(0.0, 0.0, 1.5),
+        right: glam::Vec3::X,
+        up: glam::Vec3::Y,
+        forward: glam::Vec3::NEG_Z,
+        fov_y: 45.0,
+        z_near: 0.01,
+        z_far: 100.0,
+        ..Default::default()
+    };
 
     const CAMERA_ROTATE_SPEED: f32 = 100.0;
     const CAMERA_MOVE_SPEED: f32 = 0.1;
@@ -257,6 +329,8 @@ fn main() {
                     config.width = new_size.width;
                     config.height = new_size.height;
                     surface.configure(&device, &config);
+
+                    camera.set_aspect_ratio((config.width / config.height) as f32);
                 }
             },
 
@@ -267,6 +341,8 @@ fn main() {
                     config.width = new_size.width;
                     config.height = new_size.height;
                     surface.configure(&device, &config);
+
+                    camera.set_aspect_ratio((config.width / config.height) as f32);
                 }
             },
 
@@ -335,14 +411,10 @@ fn main() {
 
                 window.set_cursor_position(winit::dpi::PhysicalPosition::new(screen_center.x as u32, screen_center.y as u32)).unwrap();
 
-                let horizontal_angle = (mouse_delta.x / window_size.width as f32 / 2.0) * delta_time * CAMERA_ROTATE_SPEED * CAMERA_FOV;
-                let vertical_angle = (mouse_delta.y / window_size.height as f32 / 2.0) * delta_time * CAMERA_ROTATE_SPEED * CAMERA_FOV;
+                let horizontal_angle = (mouse_delta.x / window_size.width as f32 / 2.0) * delta_time * CAMERA_ROTATE_SPEED * camera.fov_y;
+                let vertical_angle = (mouse_delta.y / window_size.height as f32 / 2.0) * delta_time * CAMERA_ROTATE_SPEED * camera.fov_y;
 
-                camera_forward = glam::Mat3::from_axis_angle(camera_right.normalize(), f32::to_radians(vertical_angle)) * camera_forward;
-
-                camera_forward = glam::Mat3::from_axis_angle(camera_up.normalize(), f32::to_radians(horizontal_angle)) * camera_forward;
-
-                camera_right = camera_forward.cross(camera_up);
+                camera.rotate(horizontal_angle, vertical_angle);
             },
 
             _ => {}
@@ -351,19 +423,19 @@ fn main() {
         Event::RedrawRequested(window_id) if window_id == window.id() => {
             // update movement
             if movement_input & UP > 0 {
-                camera_pos = camera_pos + camera_forward * CAMERA_MOVE_SPEED;
+                camera.translate(camera.forward * CAMERA_MOVE_SPEED);
             }
 
             if movement_input & DOWN > 0 {
-                camera_pos = camera_pos - camera_forward * CAMERA_MOVE_SPEED;
+                camera.translate(-camera.forward * CAMERA_MOVE_SPEED);
             }
 
             if movement_input & LEFT > 0 {
-                camera_pos = camera_pos - camera_right * CAMERA_MOVE_SPEED;
+                camera.translate(-camera.right * CAMERA_MOVE_SPEED);
             }
 
             if movement_input & RIGHT > 0 {
-                camera_pos = camera_pos + camera_right * CAMERA_MOVE_SPEED;
+                camera.translate(camera.right * CAMERA_MOVE_SPEED);
             }
 
             // render
@@ -375,19 +447,8 @@ fn main() {
                 label: Some("Render Encoder"),
             });
 
-            let aspect_ratio = config.width as f32 / config.height as f32;
-            let z_near = 0.1;
-            let z_far = 100.0;
-
-            let fov_y = CAMERA_FOV;
-
-            let camera_target = camera_pos + camera_forward;
-
-            let view_matrix = glam::Mat4::look_at_rh(camera_pos, camera_target, camera_up);
-            let projection_matrix = glam::Mat4::perspective_rh_gl(f32::to_radians(fov_y), aspect_ratio, z_near, z_far);
-
-            camera_uniform.projection = *projection_matrix.as_ref();
-            camera_uniform.view = *view_matrix.as_ref();
+            camera_uniform.projection = *camera.projection_matrix.as_ref();
+            camera_uniform.view = *camera.view_matrix.as_ref();
 
             queue.write_buffer(
                 &camera_buffer,
