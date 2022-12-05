@@ -222,6 +222,13 @@ fn main() {
     let mut camera_right = glam::Vec3::new(1.0, 0.0, 0.0);
     let mut camera_up = glam::Vec3::new(0.0, 1.0, 0.0);
 
+    const LEFT: u32 = 1 << 1;
+    const RIGHT: u32 = 1 << 2;
+    const UP: u32 = 1 << 3;
+    const DOWN: u32 = 1 << 4;
+
+    let mut movement_input: u32 = 0x00;
+
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {
             ref event,
@@ -260,19 +267,39 @@ fn main() {
                 if *state == ElementState::Pressed {
                     match key_code {
                         VirtualKeyCode::W => {
-                            camera_pos = camera_pos + camera_forward;
+                            movement_input |= UP;
                         },
 
                         VirtualKeyCode::S => {
-                            camera_pos = camera_pos - camera_forward;
+                            movement_input |= DOWN;
                         },
 
                         VirtualKeyCode::A => {
-                            camera_pos = camera_pos - camera_right;
+                            movement_input |= LEFT;
                         },
 
                         VirtualKeyCode::D => {
-                            camera_pos = camera_pos + camera_right;
+                            movement_input |= RIGHT;
+                        },
+
+                        _ => (),
+                    }
+                } else if *state == ElementState::Released {
+                    match key_code {
+                        VirtualKeyCode::W => {
+                            movement_input &= !UP;
+                        },
+
+                        VirtualKeyCode::S => {
+                            movement_input &= !DOWN;
+                        },
+
+                        VirtualKeyCode::A => {
+                            movement_input &= !LEFT;
+                        },
+
+                        VirtualKeyCode::D => {
+                            movement_input &= !RIGHT;
                         },
 
                         _ => (),
@@ -284,6 +311,23 @@ fn main() {
         },
 
         Event::RedrawRequested(window_id) if window_id == window.id() => {
+            // update movement
+            if movement_input & UP > 0 {
+                camera_pos = camera_pos + camera_forward;
+            }
+
+            if movement_input & DOWN > 0 {
+                camera_pos = camera_pos - camera_forward;
+            }
+
+            if movement_input & LEFT > 0 {
+                camera_pos = camera_pos - camera_right;
+            }
+
+            if movement_input & RIGHT > 0 {
+                camera_pos = camera_pos + camera_right;
+            }
+
             // render
             let output = surface.get_current_texture().unwrap();
 
