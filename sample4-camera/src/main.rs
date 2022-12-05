@@ -60,7 +60,7 @@ fn main() {
 
     let window = window_builder.build(&event_loop).unwrap();
 
-    let size = window.inner_size();
+    let window_size = window.inner_size();
 
     // The instance is a handle to our GPU
     // Backends::all => Vulkan + Metal + DX12 + Browser WebGPU
@@ -98,8 +98,8 @@ fn main() {
     let mut config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
         format: surface.get_supported_formats(&adapter)[0],
-        width: size.width,
-        height: size.height,
+        width: window_size.width,
+        height: window_size.height,
         present_mode: wgpu::PresentMode::Fifo,
         alpha_mode: wgpu::CompositeAlphaMode::Auto,
     };
@@ -231,7 +231,8 @@ fn main() {
 
     const CAMERA_FOV: f32 = 45.0;
 
-    const CAMERA_ROTATE_SPEED: f32 = 10.0;
+    const CAMERA_ROTATE_SPEED: f32 = 100.0;
+    const CAMERA_MOVE_SPEED: f32 = 0.1;
 
     let mut last_frame_inst = Instant::now();
 
@@ -328,14 +329,14 @@ fn main() {
 
                 last_frame_inst = Instant::now();
 
-                let screen_center = glam::Vec2::new(size.width as f32 / 2.0, size.height as f32 / 2.0);
+                let screen_center = glam::Vec2::new(window_size.width as f32 / 2.0, window_size.height as f32 / 2.0);
                 let current_mouse_position = glam::Vec2::new(mouse_position.x as f32, mouse_position.y as f32);
                 let mouse_delta = screen_center - current_mouse_position;
 
                 window.set_cursor_position(winit::dpi::PhysicalPosition::new(screen_center.x as u32, screen_center.y as u32)).unwrap();
 
-                let horizontal_angle = (mouse_delta.x / size.width as f32 / 2.0) * delta_time * 100.0 * CAMERA_FOV;
-                let vertical_angle = (mouse_delta.y / size.height as f32 / 2.0) * delta_time * 100.0 * CAMERA_FOV;
+                let horizontal_angle = (mouse_delta.x / window_size.width as f32 / 2.0) * delta_time * CAMERA_ROTATE_SPEED * CAMERA_FOV;
+                let vertical_angle = (mouse_delta.y / window_size.height as f32 / 2.0) * delta_time * CAMERA_ROTATE_SPEED * CAMERA_FOV;
 
                 camera_forward = glam::Mat3::from_axis_angle(camera_right.normalize(), f32::to_radians(vertical_angle)) * camera_forward;
 
@@ -350,19 +351,19 @@ fn main() {
         Event::RedrawRequested(window_id) if window_id == window.id() => {
             // update movement
             if movement_input & UP > 0 {
-                camera_pos = camera_pos + camera_forward;
+                camera_pos = camera_pos + camera_forward * CAMERA_MOVE_SPEED;
             }
 
             if movement_input & DOWN > 0 {
-                camera_pos = camera_pos - camera_forward;
+                camera_pos = camera_pos - camera_forward * CAMERA_MOVE_SPEED;
             }
 
             if movement_input & LEFT > 0 {
-                camera_pos = camera_pos - camera_right;
+                camera_pos = camera_pos - camera_right * CAMERA_MOVE_SPEED;
             }
 
             if movement_input & RIGHT > 0 {
-                camera_pos = camera_pos + camera_right;
+                camera_pos = camera_pos + camera_right * CAMERA_MOVE_SPEED;
             }
 
             // render
