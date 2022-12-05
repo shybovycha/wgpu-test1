@@ -40,7 +40,12 @@ fn main() {
 
     let event_loop = EventLoop::new();
 
-    let window = WindowBuilder::new().build(&event_loop).unwrap();
+    let mut window_builder = WindowBuilder::new();
+
+    window_builder = window_builder.with_title("Sample 3: Shaders");
+    window_builder = window_builder.with_min_inner_size(winit::dpi::PhysicalSize::new(800, 600));
+
+    let window = window_builder.build(&event_loop).unwrap();
 
     let size = window.inner_size();
 
