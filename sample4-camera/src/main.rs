@@ -127,7 +127,7 @@ fn main() {
     let mut window_builder = WindowBuilder::new();
 
     window_builder = window_builder.with_title("Sample 4: Camera");
-    window_builder = window_builder.with_min_inner_size(winit::dpi::PhysicalSize::new(1024, 768));
+    window_builder = window_builder.with_min_inner_size(winit::dpi::LogicalSize::new(1024.0, 768.0));
 
     let window = window_builder.build(&event_loop).unwrap();
 
@@ -154,6 +154,8 @@ fn main() {
     window.set_cursor_grab(winit::window::CursorGrabMode::Confined)
         .or_else(|_e| window.set_cursor_grab(winit::window::CursorGrabMode::Locked))
         .unwrap();
+
+    window.set_cursor_position(winit::dpi::PhysicalPosition::new(window_size.width as f32 / 2.0, window_size.height as f32 / 2.0)).unwrap();
 
     window.set_cursor_visible(false);
 
@@ -335,15 +337,15 @@ fn main() {
                 }
             },
 
-            WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
+            WindowEvent::ScaleFactorChanged { scale_factor, new_inner_size, .. } => {
                 let new_size = **new_inner_size;
 
                 if new_size.width > 0 && new_size.height > 0 {
-                    config.width = new_size.width;
-                    config.height = new_size.height;
+                    config.width = new_size.width * (*scale_factor as u32);
+                    config.height = new_size.height * (*scale_factor as u32);
                     surface.configure(&device, &config);
 
-                    camera.set_aspect_ratio((config.width / config.height) as f32);
+                    camera.set_aspect_ratio((config.width / config.height) as f32 * (*scale_factor as f32));
                 }
             },
 
@@ -410,7 +412,7 @@ fn main() {
                 let current_mouse_position = glam::Vec2::new(mouse_position.x as f32, mouse_position.y as f32);
                 let mouse_delta = screen_center - current_mouse_position;
 
-                window.set_cursor_position(winit::dpi::PhysicalPosition::new(screen_center.x as u32, screen_center.y as u32)).unwrap();
+                window.set_cursor_position(winit::dpi::PhysicalPosition::new(screen_center.x, screen_center.y)).unwrap();
 
                 let horizontal_angle = (mouse_delta.x / window_size.width as f32 / 2.0) * delta_time * CAMERA_ROTATE_SPEED * camera.fov_y;
                 let vertical_angle = (mouse_delta.y / window_size.height as f32 / 2.0) * delta_time * CAMERA_ROTATE_SPEED * camera.fov_y;
