@@ -82,11 +82,12 @@ impl Camera {
     }
 
     fn rotate(&mut self, horizontal_angle: f32, vertical_angle: f32) -> &mut Self {
-        self.forward = glam::Mat3::from_axis_angle(self.right.normalize(), f32::to_radians(vertical_angle)) * self.forward;
+        let rotation_matrix_vertical = glam::Mat3::from_axis_angle(self.right.normalize(), f32::to_radians(vertical_angle));
+        let rotation_matrix_horizontal = glam::Mat3::from_axis_angle(self.up.normalize(), f32::to_radians(horizontal_angle));
 
-        self.forward = glam::Mat3::from_axis_angle(self.up.normalize(), f32::to_radians(horizontal_angle)) * self.forward;
+        self.forward = rotation_matrix_vertical * rotation_matrix_horizontal * self.forward;
 
-        self.right = glam::Mat3::from_axis_angle(self.up.normalize(), f32::to_radians(horizontal_angle)) * self.right;
+        self.right = rotation_matrix_horizontal * self.right; // self.forward.cross(self.up).normalize(); // glam::Mat3::from_axis_angle(self.up.normalize(), f32::to_radians(horizontal_angle)) * self.right;
 
         self.update_matrices();
 
@@ -94,7 +95,7 @@ impl Camera {
     }
 
     fn update_matrices(&mut self) -> &mut Self {
-        self.view_matrix = glam::Mat4::look_at_rh(self.position, self.forward, self.up);
+        self.view_matrix = glam::Mat4::look_at_rh(self.position, self.position + self.forward, self.up);
         self.projection_matrix = glam::Mat4::perspective_rh_gl(f32::to_radians(self.fov_y), self.aspect_ratio, self.z_near, self.z_far);
 
         self
