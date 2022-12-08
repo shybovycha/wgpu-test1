@@ -47,7 +47,7 @@ fn main() {
     let mut window_builder = WindowBuilder::new();
 
     window_builder = window_builder.with_title("Sample 6: GUI");
-    window_builder = window_builder.with_min_inner_size(winit::dpi::PhysicalSize::new(800, 600));
+    window_builder = window_builder.with_min_inner_size(winit::dpi::LogicalSize::new(1024, 768));
 
     let window = window_builder.build(&event_loop).unwrap();
 
