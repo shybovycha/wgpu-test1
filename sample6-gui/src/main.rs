@@ -10,6 +10,8 @@ use wgpu::util::DeviceExt;
 
 use imgui::*;
 
+mod imgui_wgpu;
+
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct Vertex {
@@ -80,7 +82,7 @@ fn main() {
         width: size.width,
         height: size.height,
         present_mode: wgpu::PresentMode::Fifo,
-        // alpha_mode: wgpu::CompositeAlphaMode::Auto,
+        alpha_mode: wgpu::CompositeAlphaMode::Auto,
     };
 
     surface.configure(&device, &config);
@@ -248,14 +250,15 @@ fn main() {
                 platform
                     .prepare_frame(imgui.io_mut(), &window)
                     .expect("Failed to prepare frame");
+
                 let ui = imgui.frame();
 
                 {
-                    let window = imgui::Window::new("Hello world");
+                    let window = ui.window("Hello world");
 
                     window
                         .size([300.0, 100.0], Condition::FirstUseEver)
-                        .build(&ui, || {
+                        .build(|| {
                             ui.text("Hello world!");
                             ui.text("This...is...imgui-rs on WGPU!");
                             ui.separator();
@@ -266,12 +269,12 @@ fn main() {
                             ));
                         });
 
-                    let window = imgui::Window::new("Hello too");
+                    let window = ui.window("Hello too");
 
                     window
                         .size([400.0, 200.0], Condition::FirstUseEver)
                         .position([400.0, 200.0], Condition::FirstUseEver)
-                        .build(&ui, || {
+                        .build(|| {
                             ui.text(format!("Frametime: {:?}", delta_s));
                         });
 
@@ -338,7 +341,7 @@ fn main() {
                     });
 
                     renderer
-                        .render(ui.render(), &queue, &device, &mut gui_render_pass)
+                        .render(imgui.render(), &queue, &device, &mut gui_render_pass)
                         .expect("Rendering failed");
                 }
 
