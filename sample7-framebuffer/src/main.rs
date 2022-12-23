@@ -143,12 +143,11 @@ fn create_rtt_target_texture(config: &wgpu::SurfaceConfiguration, device: &wgpu:
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             // Most images are stored using sRGB so we need to reflect that here.
-            // format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            format: config.format,
+            format: wgpu::TextureFormat::Bgra8UnormSrgb,
             // TEXTURE_BINDING tells wgpu that we want to use this texture in shaders
             // COPY_DST means that we want to copy data to this texture
             usage: wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::COPY_DST
+                // | wgpu::TextureUsages::COPY_DST
                 | wgpu::TextureUsages::RENDER_ATTACHMENT,
             label: Some("render to texture target texture"),
         }
@@ -340,7 +339,7 @@ fn main() {
 
     let mut depth_view = create_depth_stencil_texture(&config, &device);
 
-    let rtt_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+    let mut rtt_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
         address_mode_u: wgpu::AddressMode::ClampToEdge,
         address_mode_v: wgpu::AddressMode::ClampToEdge,
         address_mode_w: wgpu::AddressMode::ClampToEdge,
@@ -374,7 +373,7 @@ fn main() {
         label: Some("texture_bind_group_layout"),
     });
 
-    let rtt_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+    let mut rtt_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
         layout: &rtt_bind_group_layout,
         entries: &[
             wgpu::BindGroupEntry {
@@ -396,7 +395,7 @@ fn main() {
     ];
 
     const TRIANGLE_INDICES: &[u16] = &[
-        0, 1, 2,
+        2, 1, 0,
     ];
 
     let triangle_vertex_buffer = device.create_buffer_init(
@@ -544,16 +543,9 @@ fn main() {
         }),
         primitive: wgpu::PrimitiveState {
             topology: wgpu::PrimitiveTopology::TriangleList,
-            // strip_index_format: None,
             front_face: wgpu::FrontFace::Ccw,
             cull_mode: Some(wgpu::Face::Front),
             ..Default::default()
-            // // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
-            // polygon_mode: wgpu::PolygonMode::Fill,
-            // // Requires Features::DEPTH_CLIP_CONTROL
-            // unclipped_depth: false,
-            // // Requires Features::CONSERVATIVE_RASTERIZATION
-            // conservative: false,
         },
         depth_stencil: Some(wgpu::DepthStencilState {
             format: wgpu::TextureFormat::Depth32Float,
@@ -608,6 +600,32 @@ fn main() {
 
                     rtt_texture = create_rtt_target_texture(&config, &device);
                     rtt_texture_view1 = rtt_texture.create_view(&wgpu::TextureViewDescriptor::default());
+                    rtt_texture_view2 = rtt_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+                    rtt_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+                        address_mode_u: wgpu::AddressMode::ClampToEdge,
+                        address_mode_v: wgpu::AddressMode::ClampToEdge,
+                        address_mode_w: wgpu::AddressMode::ClampToEdge,
+                        mag_filter: wgpu::FilterMode::Linear,
+                        min_filter: wgpu::FilterMode::Nearest,
+                        mipmap_filter: wgpu::FilterMode::Nearest,
+                        ..Default::default()
+                    });
+
+                    rtt_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        layout: &rtt_bind_group_layout,
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: wgpu::BindingResource::TextureView(&rtt_texture_view2),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 1,
+                                resource: wgpu::BindingResource::Sampler(&rtt_sampler),
+                            }
+                        ],
+                        label: Some("rtt_bind_group"),
+                    });
 
                     depth_view = create_depth_stencil_texture(&config, &device);
                 }
@@ -625,6 +643,32 @@ fn main() {
 
                     rtt_texture = create_rtt_target_texture(&config, &device);
                     rtt_texture_view1 = rtt_texture.create_view(&wgpu::TextureViewDescriptor::default());
+                    rtt_texture_view2 = rtt_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+                    rtt_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+                        address_mode_u: wgpu::AddressMode::ClampToEdge,
+                        address_mode_v: wgpu::AddressMode::ClampToEdge,
+                        address_mode_w: wgpu::AddressMode::ClampToEdge,
+                        mag_filter: wgpu::FilterMode::Linear,
+                        min_filter: wgpu::FilterMode::Nearest,
+                        mipmap_filter: wgpu::FilterMode::Nearest,
+                        ..Default::default()
+                    });
+
+                    rtt_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        layout: &rtt_bind_group_layout,
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: wgpu::BindingResource::TextureView(&rtt_texture_view2),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 1,
+                                resource: wgpu::BindingResource::Sampler(&rtt_sampler),
+                            }
+                        ],
+                        label: Some("rtt_bind_group"),
+                    });
 
                     depth_view = create_depth_stencil_texture(&config, &device);
                 }
@@ -734,12 +778,6 @@ fn main() {
             camera_uniform.projection = *camera.projection_matrix.as_ref();
             camera_uniform.view = *camera.view_matrix.as_ref();
 
-            queue.write_buffer(
-                &camera_buffer,
-                0,
-                bytemuck::cast_slice(&[camera_uniform]),
-            );
-
             {
                 let mut render_pass = command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("First render pass"),
@@ -824,61 +862,23 @@ fn main() {
                 render_pass.set_pipeline(&rtt_render_pipeline);
 
                 render_pass.set_bind_group(0, &camera_bind_group, &[]);
+
                 render_pass.set_bind_group(1, &rtt_bind_group, &[]);
 
                 render_pass.set_vertex_buffer(0, cube_vertex_buffer.slice(..));
                 render_pass.set_index_buffer(cube_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 
                 render_pass.draw_indexed(0..(CUBE_INDICES.len() as u32), 0, 0..1);
+
+                // render_pass.set_bind_group(1, &triangle_bind_group, &[]);
+
+                // render_pass.set_vertex_buffer(0, triangle_vertex_buffer.slice(..));
+                // render_pass.set_index_buffer(triangle_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+
+                // render_pass.draw_indexed(0..(TRIANGLE_INDICES.len() as u32), 0, 0..1);
             }
 
-            // {
-            //     let mut render_pass = command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            //         label: Some("First render pass"),
-
-            //         color_attachments: &[
-            //             // This is what @location(0) in the fragment shader targets
-            //             Some(wgpu::RenderPassColorAttachment {
-            //                 view: &view,
-            //                 resolve_target: None,
-            //                 ops: wgpu::Operations {
-            //                     load: wgpu::LoadOp::Clear(
-            //                         wgpu::Color {
-            //                             r: 1.0,
-            //                             g: 1.0,
-            //                             b: 1.0,
-            //                             a: 1.0,
-            //                         }
-            //                     ),
-            //                     store: true,
-            //                 },
-            //             }
-            //         )],
-
-            //         depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-            //             view: &depth_view,
-            //             depth_ops: Some(wgpu::Operations {
-            //                 load: wgpu::LoadOp::Clear(1.0),
-            //                 store: true,
-            //             }),
-            //             stencil_ops: None,
-            //         }),
-            //     });
-
-            //     queue.write_buffer(&camera_buffer, 0, bytemuck::bytes_of(&camera_uniform));
-
-            //     render_pass.set_pipeline(&render_pipeline);
-
-            //     render_pass.set_bind_group(0, &camera_bind_group, &[]);
-            //     render_pass.set_bind_group(1, &triangle_bind_group, &[]);
-
-            //     render_pass.set_vertex_buffer(0, triangle_vertex_buffer.slice(..));
-            //     render_pass.set_index_buffer(triangle_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-
-            //     render_pass.draw_indexed(0..(TRIANGLE_INDICES.len() as u32), 0, 0..1);
-            // }
-
-            queue.submit(std::iter::once(command_encoder.finish()));
+            queue.submit(Some(command_encoder.finish()));
 
             output.present();
         },
