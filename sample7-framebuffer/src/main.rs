@@ -421,7 +421,7 @@ fn main() {
 
     let rtt_texture = create_rtt_target_texture(&config, &device);
     let rtt_texture_view1 = rtt_texture.create_view(&wgpu::TextureViewDescriptor::default());
-    let rtt_texture_view2 = rtt_texture.create_view(&wgpu::TextureViewDescriptor::default());
+    let mut rtt_texture_view2 = rtt_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
     let mut depth_view = create_depth_stencil_texture(&config, &device);
 
@@ -464,7 +464,7 @@ fn main() {
         entries: &[
             wgpu::BindGroupEntry {
                 binding: 0,
-                resource: wgpu::BindingResource::TextureView(&rtt_texture_view2),
+                resource: wgpu::BindingResource::TextureView(&rtt_texture_view1),
             },
             wgpu::BindGroupEntry {
                 binding: 1,
@@ -567,6 +567,14 @@ fn main() {
         }
     );
 
+    let rtt_camera_buffer = device.create_buffer_init(
+        &wgpu::util::BufferInitDescriptor {
+            label: Some("RTT camera buffer"),
+            contents: bytemuck::cast_slice(&[rtt_camera_uniform]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        }
+    );
+
     let camera_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         entries: &[
             wgpu::BindGroupLayoutEntry {
@@ -592,6 +600,17 @@ fn main() {
             }
         ],
         label: Some("Camera bind group"),
+    });
+
+    let rtt_camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        layout: &camera_bind_group_layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: rtt_camera_buffer.as_entire_binding(),
+            }
+        ],
+        label: Some("RTT camera bind group"),
     });
 
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -675,7 +694,8 @@ fn main() {
                     camera.set_aspect_ratio((config.width / config.height) as f32);
 
                     let rtt_texture = create_rtt_target_texture(&config, &device);
-                    let rtt_texture_view = rtt_texture.create_view(&wgpu::TextureViewDescriptor::default());
+                    let rtt_texture_view1 = rtt_texture.create_view(&wgpu::TextureViewDescriptor::default());
+                    rtt_texture_view2 = rtt_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
                     let rtt_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
                         address_mode_u: wgpu::AddressMode::ClampToEdge,
@@ -692,7 +712,7 @@ fn main() {
                         entries: &[
                             wgpu::BindGroupEntry {
                                 binding: 0,
-                                resource: wgpu::BindingResource::TextureView(&rtt_texture_view),
+                                resource: wgpu::BindingResource::TextureView(&rtt_texture_view1),
                             },
                             wgpu::BindGroupEntry {
                                 binding: 1,
@@ -718,7 +738,8 @@ fn main() {
                     camera.set_aspect_ratio((config.width / config.height) as f32 * (*scale_factor as f32));
 
                     let rtt_texture = create_rtt_target_texture(&config, &device);
-                    let rtt_texture_view = rtt_texture.create_view(&wgpu::TextureViewDescriptor::default());
+                    let rtt_texture_view1 = rtt_texture.create_view(&wgpu::TextureViewDescriptor::default());
+                    rtt_texture_view2 = rtt_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
                     let rtt_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
                         address_mode_u: wgpu::AddressMode::ClampToEdge,
@@ -735,7 +756,7 @@ fn main() {
                         entries: &[
                             wgpu::BindGroupEntry {
                                 binding: 0,
-                                resource: wgpu::BindingResource::TextureView(&rtt_texture_view),
+                                resource: wgpu::BindingResource::TextureView(&rtt_texture_view1),
                             },
                             wgpu::BindGroupEntry {
                                 binding: 1,
@@ -840,7 +861,7 @@ fn main() {
 
                     color_attachments: &[
                         Some(wgpu::RenderPassColorAttachment {
-                            view: &rtt_texture_view1,
+                            view: &rtt_texture_view2,
                             resolve_target: None,
                             ops: wgpu::Operations {
                                 load: wgpu::LoadOp::Clear(
@@ -866,11 +887,9 @@ fn main() {
                     }),
                 });
 
-                queue.write_buffer(&camera_buffer, 0, bytemuck::bytes_of(&rtt_camera_uniform));
-
                 render_pass.set_pipeline(&rtt_render_pipeline);
 
-                render_pass.set_bind_group(0, &camera_bind_group, &[]);
+                render_pass.set_bind_group(0, &rtt_camera_bind_group, &[]);
                 render_pass.set_bind_group(1, &triangle_bind_group, &[]);
 
                 render_pass.set_vertex_buffer(0, triangle_vertex_buffer.slice(..));
@@ -917,7 +936,6 @@ fn main() {
                 render_pass.set_pipeline(&rtt_render_pipeline);
 
                 render_pass.set_bind_group(0, &camera_bind_group, &[]);
-
                 render_pass.set_bind_group(1, &rtt_bind_group, &[]);
 
                 render_pass.set_vertex_buffer(0, cube_vertex_buffer.slice(..));
