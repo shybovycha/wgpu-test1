@@ -129,6 +129,107 @@ impl Default for Camera {
     }
 }
 
+struct CameraController {
+    last_update_timestamp: std::time::Instant,
+    rotate_speed: f32,
+    move_speed: f32,
+    movement_state: u32,
+}
+
+impl CameraController {
+    const CAMERA_ROTATE_SPEED: f32 = 100.0;
+    const CAMERA_MOVE_SPEED: f32 = 10.0;
+
+    const LEFT: u32 = 1 << 1;
+    const RIGHT: u32 = 1 << 2;
+    const FORWARD: u32 = 1 << 3;
+    const BACK: u32 = 1 << 4;
+
+    fn new() -> Self {
+        Self {
+            last_update_timestamp: std::time::Instant::now(),
+            rotate_speed: CameraController::CAMERA_ROTATE_SPEED,
+            move_speed: CameraController::CAMERA_MOVE_SPEED,
+            movement_state: 0,
+        }
+    }
+
+    fn start_move_forward(&mut self) -> &Self {
+        self.movement_state |= CameraController::FORWARD;
+        self
+    }
+
+    fn start_move_back(&mut self) -> &Self {
+        self.movement_state |= CameraController::BACK;
+        self
+    }
+
+    fn start_move_left(&mut self) -> &Self {
+        self.movement_state |= CameraController::LEFT;
+        self
+    }
+
+    fn start_move_right(&mut self) -> &Self {
+        self.movement_state |= CameraController::RIGHT;
+        self
+    }
+
+    fn stop_move_forward(&mut self) -> &Self {
+        self.movement_state &= !CameraController::FORWARD;
+        self
+    }
+
+    fn stop_move_back(&mut self) -> &Self {
+        self.movement_state &= !CameraController::BACK;
+        self
+    }
+
+    fn stop_move_left(&mut self) -> &Self {
+        self.movement_state &= !CameraController::LEFT;
+        self
+    }
+
+    fn stop_move_right(&mut self) -> &Self {
+        self.movement_state &= !CameraController::RIGHT;
+        self
+    }
+
+    fn rotate(&mut self, camera: &mut Camera, mouse_delta: glam::Vec2) -> &Self {
+        let delta_time = self.last_update_timestamp.elapsed().as_secs_f32();
+
+        let horizontal_angle = mouse_delta.x * delta_time * self.rotate_speed * camera.fov_y;
+        let vertical_angle = mouse_delta.y * delta_time * self.rotate_speed * camera.fov_y;
+
+        camera.rotate(horizontal_angle, vertical_angle);
+
+        self
+    }
+
+    fn update(&mut self, camera: &mut Camera) -> &Self {
+        let delta_time = self.last_update_timestamp.elapsed().as_secs_f32();
+
+        self.last_update_timestamp = Instant::now();
+
+        if self.movement_state & CameraController::FORWARD > 0 {
+            camera.translate(camera.forward * self.move_speed * delta_time);
+        }
+
+        if self.movement_state & CameraController::BACK > 0 {
+            camera.translate(-camera.forward * self.move_speed * delta_time);
+        }
+
+        if self.movement_state & CameraController::LEFT > 0 {
+            camera.translate(-camera.right * self.move_speed * delta_time);
+        }
+
+        if self.movement_state & CameraController::RIGHT > 0 {
+            camera.translate(camera.right * self.move_speed * delta_time);
+        }
+
+        self
+    }
+}
+
 fn create_rtt_target_texture(config: &wgpu::SurfaceConfiguration, device: &wgpu::Device) -> wgpu::Texture {
     device.create_texture(
         &wgpu::TextureDescriptor {
@@ -554,17 +655,7 @@ fn main() {
         ..Default::default()
     };
 
-    const CAMERA_ROTATE_SPEED: f32 = 100.0;
-    const CAMERA_MOVE_SPEED: f32 = 0.1;
-
-    let mut last_frame_inst = Instant::now();
-
-    const LEFT: u32 = 1 << 1;
-    const RIGHT: u32 = 1 << 2;
-    const UP: u32 = 1 << 3;
-    const DOWN: u32 = 1 << 4;
-
-    let mut movement_input: u32 = 0x00;
+    let mut camera_controller = CameraController::new();
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {
@@ -669,19 +760,19 @@ fn main() {
                 if *state == ElementState::Pressed {
                     match key_code {
                         VirtualKeyCode::W => {
-                            movement_input |= UP;
+                            camera_controller.start_move_forward();
                         },
 
                         VirtualKeyCode::S => {
-                            movement_input |= DOWN;
+                            camera_controller.start_move_back();
                         },
 
                         VirtualKeyCode::A => {
-                            movement_input |= LEFT;
+                            camera_controller.start_move_left();
                         },
 
                         VirtualKeyCode::D => {
-                            movement_input |= RIGHT;
+                            camera_controller.start_move_right();
                         },
 
                         _ => (),
@@ -689,19 +780,19 @@ fn main() {
                 } else if *state == ElementState::Released {
                     match key_code {
                         VirtualKeyCode::W => {
-                            movement_input &= !UP;
+                            camera_controller.stop_move_forward();
                         },
 
                         VirtualKeyCode::S => {
-                            movement_input &= !DOWN;
+                            camera_controller.stop_move_back();
                         },
 
                         VirtualKeyCode::A => {
-                            movement_input &= !LEFT;
+                            camera_controller.stop_move_left();
                         },
 
                         VirtualKeyCode::D => {
-                            movement_input &= !RIGHT;
+                            camera_controller.stop_move_right();
                         },
 
                         _ => (),
@@ -713,43 +804,22 @@ fn main() {
                 position: mouse_position,
                 ..
             } => {
-                let delta_time = last_frame_inst.elapsed().as_secs_f32();
-
-                last_frame_inst = Instant::now();
-
                 let screen_center = glam::Vec2::new(window_size.width as f32 / 2.0, window_size.height as f32 / 2.0);
                 let current_mouse_position = glam::Vec2::new(mouse_position.x as f32, mouse_position.y as f32);
                 let mouse_delta = screen_center - current_mouse_position;
 
                 window.set_cursor_position(winit::dpi::PhysicalPosition::new(screen_center.x, screen_center.y)).unwrap();
 
-                let horizontal_angle = (mouse_delta.x / window_size.width as f32 / 2.0) * delta_time * CAMERA_ROTATE_SPEED * camera.fov_y;
-                let vertical_angle = (mouse_delta.y / window_size.height as f32 / 2.0) * delta_time * CAMERA_ROTATE_SPEED * camera.fov_y;
-
-                camera.rotate(horizontal_angle, vertical_angle);
+                camera_controller.rotate(
+                    &mut camera,
+                    glam::vec2(mouse_delta.x / window_size.width as f32 / 2.0, mouse_delta.y / window_size.height as f32 / 2.0)
+                );
             },
 
             _ => {}
         },
 
         Event::RedrawRequested(window_id) if window_id == window.id() => {
-            // update movement
-            if movement_input & UP > 0 {
-                camera.translate(camera.forward * CAMERA_MOVE_SPEED);
-            }
-
-            if movement_input & DOWN > 0 {
-                camera.translate(-camera.forward * CAMERA_MOVE_SPEED);
-            }
-
-            if movement_input & LEFT > 0 {
-                camera.translate(-camera.right * CAMERA_MOVE_SPEED);
-            }
-
-            if movement_input & RIGHT > 0 {
-                camera.translate(camera.right * CAMERA_MOVE_SPEED);
-            }
-
             // render
             let output = surface.get_current_texture().unwrap();
 
@@ -758,6 +828,8 @@ fn main() {
             let mut command_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Render command encoder"),
             });
+
+            camera_controller.update(&mut camera);
 
             camera_uniform.projection = *camera.projection_matrix.as_ref();
             camera_uniform.view = *camera.view_matrix.as_ref();
