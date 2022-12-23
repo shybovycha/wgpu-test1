@@ -97,7 +97,7 @@ impl Camera {
 
         self.forward = rotation_matrix_vertical * rotation_matrix_horizontal * self.forward;
 
-        self.right = rotation_matrix_horizontal * self.right; // self.forward.cross(self.up).normalize(); // glam::Mat3::from_axis_angle(self.up.normalize(), f32::to_radians(horizontal_angle)) * self.right;
+        self.right = rotation_matrix_horizontal * self.right;
 
         self.update_matrices();
 
@@ -132,31 +132,26 @@ impl Default for Camera {
 fn create_rtt_target_texture(config: &wgpu::SurfaceConfiguration, device: &wgpu::Device) -> wgpu::Texture {
     device.create_texture(
         &wgpu::TextureDescriptor {
-            // All textures are stored as 3D, we represent our 2D texture
-            // by setting depth to 1.
             size: wgpu::Extent3d {
                 width: config.width,
                 height: config.height,
                 depth_or_array_layers: 1,
             },
-            mip_level_count: 1, // We'll talk about this a little later
+            mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            // Most images are stored using sRGB so we need to reflect that here.
             format: wgpu::TextureFormat::Bgra8UnormSrgb,
-            // TEXTURE_BINDING tells wgpu that we want to use this texture in shaders
-            // COPY_DST means that we want to copy data to this texture
             usage: wgpu::TextureUsages::TEXTURE_BINDING
-                // | wgpu::TextureUsages::COPY_DST
+                | wgpu::TextureUsages::COPY_DST
                 | wgpu::TextureUsages::RENDER_ATTACHMENT,
-            label: Some("render to texture target texture"),
+            label: Some("RTT target texture"),
         }
     )
 }
 
 fn create_depth_stencil_texture(config: &wgpu::SurfaceConfiguration, device: &wgpu::Device) -> wgpu::TextureView {
     let texture = device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("Depth Buffer"),
+        label: Some("Depth & stencil buffer"),
         size: wgpu::Extent3d {
             width: config.width,
             height: config.height,
@@ -188,8 +183,6 @@ fn main() {
 
     let window_size = window.inner_size();
 
-    // The instance is a handle to our GPU
-    // Backends::all => Vulkan + Metal + DX12 + Browser WebGPU
     let instance = wgpu::Instance::new(wgpu::Backends::all());
 
     let surface = unsafe { instance.create_surface(&window) };
@@ -220,7 +213,7 @@ fn main() {
             limits: wgpu::Limits::default(),
             label: None,
         },
-        None, // Trace path
+        None,
     ).block_on().unwrap();
 
     let mut config = wgpu::SurfaceConfiguration {
@@ -248,32 +241,24 @@ fn main() {
 
     let triangle_texture = device.create_texture(
         &wgpu::TextureDescriptor {
-            // All textures are stored as 3D, we represent our 2D texture
-            // by setting depth to 1.
             size: triangle_texture_size,
-            mip_level_count: 1, // We'll talk about this a little later
+            mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            // Most images are stored using sRGB so we need to reflect that here.
             format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            // TEXTURE_BINDING tells wgpu that we want to use this texture in shaders
-            // COPY_DST means that we want to copy data to this texture
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            label: Some("triangle texture"),
+            label: Some("Triangle texture"),
         }
     );
 
     queue.write_texture(
-        // Tells wgpu where to copy the pixel data
         wgpu::ImageCopyTexture {
             texture: &triangle_texture,
             mip_level: 0,
             origin: wgpu::Origin3d::ZERO,
             aspect: wgpu::TextureAspect::All,
         },
-        // The actual pixel data
         &triangle_texture_rgba,
-        // The layout of the texture
         wgpu::ImageDataLayout {
             offset: 0,
             bytes_per_row: std::num::NonZeroU32::new(4 * triangle_texture_dimensions.0),
@@ -315,7 +300,7 @@ fn main() {
                 count: None,
             },
         ],
-        label: Some("triangle bind group layout"),
+        label: Some("Triangle bind group layout"),
     });
 
     let triangle_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -330,16 +315,16 @@ fn main() {
                 resource: wgpu::BindingResource::Sampler(&triangle_texture_sampler),
             }
         ],
-        label: Some("triangle bind group"),
+        label: Some("Triangle bind group"),
     });
 
-    let mut rtt_texture = create_rtt_target_texture(&config, &device);
-    let mut rtt_texture_view1 = rtt_texture.create_view(&wgpu::TextureViewDescriptor::default());
-    let mut rtt_texture_view2 = rtt_texture.create_view(&wgpu::TextureViewDescriptor::default());
+    let rtt_texture = create_rtt_target_texture(&config, &device);
+    let rtt_texture_view1 = rtt_texture.create_view(&wgpu::TextureViewDescriptor::default());
+    let rtt_texture_view2 = rtt_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
     let mut depth_view = create_depth_stencil_texture(&config, &device);
 
-    let mut rtt_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+    let rtt_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
         address_mode_u: wgpu::AddressMode::ClampToEdge,
         address_mode_v: wgpu::AddressMode::ClampToEdge,
         address_mode_w: wgpu::AddressMode::ClampToEdge,
@@ -370,7 +355,7 @@ fn main() {
                 count: None,
             },
         ],
-        label: Some("texture_bind_group_layout"),
+        label: Some("RTT texture bind group layout"),
     });
 
     let mut rtt_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -385,7 +370,7 @@ fn main() {
                 resource: wgpu::BindingResource::Sampler(&rtt_sampler),
             }
         ],
-        label: Some("rtt_bind_group"),
+        label: Some("RTT bind group"),
     });
 
     const TRIANGLE_VERTICES: &[Vertex] = &[
@@ -475,7 +460,7 @@ fn main() {
 
     let camera_buffer = device.create_buffer_init(
         &wgpu::util::BufferInitDescriptor {
-            label: Some("Camera Buffer"),
+            label: Some("Camera buffer"),
             contents: bytemuck::cast_slice(&[camera_uniform]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         }
@@ -494,7 +479,7 @@ fn main() {
                 count: None,
             }
         ],
-        label: Some("camera_bind_group_layout"),
+        label: Some("Camera bind group layout"),
     });
 
     let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -505,7 +490,7 @@ fn main() {
                 resource: camera_buffer.as_entire_binding(),
             }
         ],
-        label: Some("camera_bind_group"),
+        label: Some("Camera bind group"),
     });
 
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -598,11 +583,10 @@ fn main() {
 
                     camera.set_aspect_ratio((config.width / config.height) as f32);
 
-                    rtt_texture = create_rtt_target_texture(&config, &device);
-                    rtt_texture_view1 = rtt_texture.create_view(&wgpu::TextureViewDescriptor::default());
-                    rtt_texture_view2 = rtt_texture.create_view(&wgpu::TextureViewDescriptor::default());
+                    let rtt_texture = create_rtt_target_texture(&config, &device);
+                    let rtt_texture_view = rtt_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-                    rtt_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+                    let rtt_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
                         address_mode_u: wgpu::AddressMode::ClampToEdge,
                         address_mode_v: wgpu::AddressMode::ClampToEdge,
                         address_mode_w: wgpu::AddressMode::ClampToEdge,
@@ -617,14 +601,14 @@ fn main() {
                         entries: &[
                             wgpu::BindGroupEntry {
                                 binding: 0,
-                                resource: wgpu::BindingResource::TextureView(&rtt_texture_view2),
+                                resource: wgpu::BindingResource::TextureView(&rtt_texture_view),
                             },
                             wgpu::BindGroupEntry {
                                 binding: 1,
                                 resource: wgpu::BindingResource::Sampler(&rtt_sampler),
                             }
                         ],
-                        label: Some("rtt_bind_group"),
+                        label: Some("RTT bind group"),
                     });
 
                     depth_view = create_depth_stencil_texture(&config, &device);
@@ -637,15 +621,15 @@ fn main() {
                 if new_size.width > 0 && new_size.height > 0 {
                     config.width = new_size.width * (*scale_factor as u32);
                     config.height = new_size.height * (*scale_factor as u32);
+
                     surface.configure(&device, &config);
 
                     camera.set_aspect_ratio((config.width / config.height) as f32 * (*scale_factor as f32));
 
-                    rtt_texture = create_rtt_target_texture(&config, &device);
-                    rtt_texture_view1 = rtt_texture.create_view(&wgpu::TextureViewDescriptor::default());
-                    rtt_texture_view2 = rtt_texture.create_view(&wgpu::TextureViewDescriptor::default());
+                    let rtt_texture = create_rtt_target_texture(&config, &device);
+                    let rtt_texture_view = rtt_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-                    rtt_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+                    let rtt_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
                         address_mode_u: wgpu::AddressMode::ClampToEdge,
                         address_mode_v: wgpu::AddressMode::ClampToEdge,
                         address_mode_w: wgpu::AddressMode::ClampToEdge,
@@ -660,14 +644,14 @@ fn main() {
                         entries: &[
                             wgpu::BindGroupEntry {
                                 binding: 0,
-                                resource: wgpu::BindingResource::TextureView(&rtt_texture_view2),
+                                resource: wgpu::BindingResource::TextureView(&rtt_texture_view),
                             },
                             wgpu::BindGroupEntry {
                                 binding: 1,
                                 resource: wgpu::BindingResource::Sampler(&rtt_sampler),
                             }
                         ],
-                        label: Some("rtt_bind_group"),
+                        label: Some("RTT bind group"),
                     });
 
                     depth_view = create_depth_stencil_texture(&config, &device);
@@ -772,7 +756,7 @@ fn main() {
             let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
 
             let mut command_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Render Encoder"),
+                label: Some("Render command encoder"),
             });
 
             camera_uniform.projection = *camera.projection_matrix.as_ref();
@@ -783,7 +767,6 @@ fn main() {
                     label: Some("First render pass"),
 
                     color_attachments: &[
-                        // This is what @location(0) in the fragment shader targets
                         Some(wgpu::RenderPassColorAttachment {
                             view: &rtt_texture_view1,
                             resolve_target: None,
@@ -869,13 +852,6 @@ fn main() {
                 render_pass.set_index_buffer(cube_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 
                 render_pass.draw_indexed(0..(CUBE_INDICES.len() as u32), 0, 0..1);
-
-                // render_pass.set_bind_group(1, &triangle_bind_group, &[]);
-
-                // render_pass.set_vertex_buffer(0, triangle_vertex_buffer.slice(..));
-                // render_pass.set_index_buffer(triangle_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-
-                // render_pass.draw_indexed(0..(TRIANGLE_INDICES.len() as u32), 0, 0..1);
             }
 
             queue.submit(Some(command_encoder.finish()));
@@ -884,7 +860,6 @@ fn main() {
         },
 
         Event::MainEventsCleared => {
-            // RedrawRequested will only trigger once, unless manually requested
             window.request_redraw();
         },
 
