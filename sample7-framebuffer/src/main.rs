@@ -129,8 +129,8 @@ impl Default for Camera {
     }
 }
 
-fn create_rtt_target_texture(config: &wgpu::SurfaceConfiguration, device: &wgpu::Device) -> wgpu::TextureView {
-    let texture = device.create_texture(
+fn create_rtt_target_texture(config: &wgpu::SurfaceConfiguration, device: &wgpu::Device) -> wgpu::Texture {
+    device.create_texture(
         &wgpu::TextureDescriptor {
             // All textures are stored as 3D, we represent our 2D texture
             // by setting depth to 1.
@@ -147,12 +147,12 @@ fn create_rtt_target_texture(config: &wgpu::SurfaceConfiguration, device: &wgpu:
             format: config.format,
             // TEXTURE_BINDING tells wgpu that we want to use this texture in shaders
             // COPY_DST means that we want to copy data to this texture
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::RENDER_ATTACHMENT,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_DST
+                | wgpu::TextureUsages::RENDER_ATTACHMENT,
             label: Some("render to texture target texture"),
         }
-    );
-
-    texture.create_view(&wgpu::TextureViewDescriptor::default())
+    )
 }
 
 fn create_depth_stencil_texture(config: &wgpu::SurfaceConfiguration, device: &wgpu::Device) -> wgpu::TextureView {
@@ -334,7 +334,9 @@ fn main() {
         label: Some("triangle bind group"),
     });
 
-    let mut rtt_texture_view = create_rtt_target_texture(&config, &device);
+    let mut rtt_texture = create_rtt_target_texture(&config, &device);
+    let mut rtt_texture_view1 = rtt_texture.create_view(&wgpu::TextureViewDescriptor::default());
+    let mut rtt_texture_view2 = rtt_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
     let mut depth_view = create_depth_stencil_texture(&config, &device);
 
@@ -377,7 +379,7 @@ fn main() {
         entries: &[
             wgpu::BindGroupEntry {
                 binding: 0,
-                resource: wgpu::BindingResource::TextureView(&rtt_texture_view),
+                resource: wgpu::BindingResource::TextureView(&rtt_texture_view2),
             },
             wgpu::BindGroupEntry {
                 binding: 1,
@@ -512,8 +514,8 @@ fn main() {
         source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
     });
 
-    let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        label: Some("Render Pipeline Layout"),
+    let rtt_render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("RTT render pipeline layout"),
         bind_group_layouts: &[
             &camera_bind_group_layout,
             &rtt_bind_group_layout,
@@ -521,9 +523,9 @@ fn main() {
         push_constant_ranges: &[],
     });
 
-    let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("Render Pipeline"),
-        layout: Some(&render_pipeline_layout),
+    let rtt_render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("RTT render pipeline"),
+        layout: Some(&rtt_render_pipeline_layout),
         vertex: wgpu::VertexState {
             module: &shader,
             entry_point: "vs_main",
@@ -604,7 +606,9 @@ fn main() {
 
                     camera.set_aspect_ratio((config.width / config.height) as f32);
 
-                    rtt_texture_view = create_rtt_target_texture(&config, &device);
+                    rtt_texture = create_rtt_target_texture(&config, &device);
+                    rtt_texture_view1 = rtt_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
                     depth_view = create_depth_stencil_texture(&config, &device);
                 }
             },
@@ -619,7 +623,9 @@ fn main() {
 
                     camera.set_aspect_ratio((config.width / config.height) as f32 * (*scale_factor as f32));
 
-                    rtt_texture_view = create_rtt_target_texture(&config, &device);
+                    rtt_texture = create_rtt_target_texture(&config, &device);
+                    rtt_texture_view1 = rtt_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
                     depth_view = create_depth_stencil_texture(&config, &device);
                 }
             },
@@ -741,7 +747,7 @@ fn main() {
                     color_attachments: &[
                         // This is what @location(0) in the fragment shader targets
                         Some(wgpu::RenderPassColorAttachment {
-                            view: &rtt_texture_view,
+                            view: &rtt_texture_view1,
                             resolve_target: None,
                             ops: wgpu::Operations {
                                 load: wgpu::LoadOp::Clear(
@@ -769,7 +775,7 @@ fn main() {
 
                 queue.write_buffer(&camera_buffer, 0, bytemuck::bytes_of(&rtt_camera_uniform));
 
-                render_pass.set_pipeline(&render_pipeline);
+                render_pass.set_pipeline(&rtt_render_pipeline);
 
                 render_pass.set_bind_group(0, &camera_bind_group, &[]);
                 render_pass.set_bind_group(1, &triangle_bind_group, &[]);
@@ -815,7 +821,7 @@ fn main() {
 
                 queue.write_buffer(&camera_buffer, 0, bytemuck::bytes_of(&camera_uniform));
 
-                render_pass.set_pipeline(&render_pipeline);
+                render_pass.set_pipeline(&rtt_render_pipeline);
 
                 render_pass.set_bind_group(0, &camera_bind_group, &[]);
                 render_pass.set_bind_group(1, &rtt_bind_group, &[]);
