@@ -246,6 +246,7 @@ fn create_rtt_target_texture(config: &wgpu::SurfaceConfiguration, device: &wgpu:
                 | wgpu::TextureUsages::COPY_DST
                 | wgpu::TextureUsages::RENDER_ATTACHMENT,
             label: Some("RTT target texture"),
+            view_formats: &[],
         }
     )
 }
@@ -265,6 +266,7 @@ fn create_depth_stencil_texture(config: &wgpu::SurfaceConfiguration, device: &wg
         usage: wgpu::TextureUsages::TEXTURE_BINDING
             | wgpu::TextureUsages::COPY_DST
             | wgpu::TextureUsages::RENDER_ATTACHMENT,
+        view_formats: &[],
     });
 
     texture.create_view(&wgpu::TextureViewDescriptor::default())
@@ -284,9 +286,11 @@ fn main() {
 
     let window_size = window.inner_size();
 
-    let instance = wgpu::Instance::new(wgpu::Backends::all());
+    // The instance is a handle to our GPU
+    // Backends::all => Vulkan + Metal + DX12 + Browser WebGPU
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
 
-    let surface = unsafe { instance.create_surface(&window) };
+    let surface = unsafe { instance.create_surface(&window) }.unwrap();
 
     let adapter = instance.request_adapter(
         &wgpu::RequestAdapterOptions {
@@ -319,11 +323,12 @@ fn main() {
 
     let mut config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-        format: surface.get_supported_formats(&adapter)[0],
+        format: wgpu::TextureFormat::Rgba8UnormSrgb,
         width: window_size.width,
         height: window_size.height,
         present_mode: wgpu::PresentMode::Fifo,
         alpha_mode: wgpu::CompositeAlphaMode::Auto,
+        view_formats: vec![wgpu::TextureFormat::Rgba8UnormSrgb],
     };
 
     surface.configure(&device, &config);
@@ -347,6 +352,9 @@ fn main() {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            view_formats: &[ wgpu::TextureFormat::Rgba8UnormSrgb ],
+            // TEXTURE_BINDING tells wgpu that we want to use this texture in shaders
+            // COPY_DST means that we want to copy data to this texture
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             label: Some("Triangle texture"),
         }
@@ -362,8 +370,8 @@ fn main() {
         &triangle_texture_rgba,
         wgpu::ImageDataLayout {
             offset: 0,
-            bytes_per_row: std::num::NonZeroU32::new(4 * triangle_texture_dimensions.0),
-            rows_per_image: std::num::NonZeroU32::new(triangle_texture_dimensions.1),
+            bytes_per_row: Some(4 * triangle_texture_dimensions.0),
+            rows_per_image: Some(triangle_texture_dimensions.1),
         },
         triangle_texture_size,
     );
