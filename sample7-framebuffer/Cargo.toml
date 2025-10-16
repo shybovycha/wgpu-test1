@@ -4,11 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-winit = "0.27"
-env_logger = "0.9"
-log = "0.4"
-wgpu = "0.17"
-pollster = "0.2"
-bytemuck = { version = "1.4", features = [ "derive" ] }
-glam = "0.22"
-image = { version = "0.24", features = [ "png", "jpeg" ] }
+winit = "0.30.12"
+env_logger = "0.11.8"
+log = "0.4.28"
+wgpu = "27.0.1"
+pollster = "0.4.0"
+bytemuck = { version = "1.24.0", features = [ "derive" ] }
+glam = "0.30.8"
+image = { version = "0.25.8", features = [ "png", "jpeg" ] }

@@ -1,8 +1,12 @@
 use winit::{
+    application::ApplicationHandler,
     event::*,
     event_loop::{ControlFlow, EventLoop},
-    window::WindowBuilder,
+    keyboard::{PhysicalKey, KeyCode},
+    window::{Window, WindowId},
 };
+
+use std::sync::Arc;
 
 use pollster::FutureExt as _;
 use wgpu::util::DeviceExt;
@@ -275,22 +279,25 @@ fn create_depth_stencil_texture(config: &wgpu::SurfaceConfiguration, device: &wg
 fn main() {
     env_logger::init();
 
-    let event_loop = EventLoop::new();
+    let event_loop = EventLoop::new().unwrap();
 
-    let mut window_builder = WindowBuilder::new();
+    event_loop.set_control_flow(ControlFlow::Poll);
 
-    window_builder = window_builder.with_title("Sample 7: Framebuffer");
-    window_builder = window_builder.with_min_inner_size(winit::dpi::LogicalSize::new(1024.0, 768.0));
+    // let mut window_builder = event_loop.create_window(Window::default_attributes()).unwrap();
 
-    let window = window_builder.build(&event_loop).unwrap();
+    // window_builder = window_builder.with_title("Sample 7: Framebuffer");
+    // window_builder = window_builder.with_min_inner_size(winit::dpi::LogicalSize::new(1024.0, 768.0));
+
+    // let window = window_builder.build(&event_loop).unwrap();
+    let window = Arc::new(event_loop.create_window(Window::default_attributes()).unwrap());
 
     let window_size = window.inner_size();
 
     // The instance is a handle to our GPU
     // Backends::all => Vulkan + Metal + DX12 + Browser WebGPU
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
+    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
 
-    let surface = unsafe { instance.create_surface(&window) }.unwrap();
+    let surface = instance.create_surface(window.clone()).unwrap();
 
     let adapter = instance.request_adapter(
         &wgpu::RequestAdapterOptions {
@@ -314,21 +321,24 @@ fn main() {
 
     let (device, queue) = adapter.request_device(
         &wgpu::DeviceDescriptor {
-            features: wgpu::Features::empty(),
-            limits: wgpu::Limits::default(),
+            required_features: wgpu::Features::empty(),
+            required_limits: wgpu::Limits::default(),
+            experimental_features: wgpu::ExperimentalFeatures::default(),
+            memory_hints: wgpu::MemoryHints::default(),
+            trace: wgpu::Trace::default(),
             label: None,
-        },
-        None,
+        }
     ).block_on().unwrap();
 
     let mut config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        format: wgpu::TextureFormat::Bgra8UnormSrgb,
         width: window_size.width,
         height: window_size.height,
         present_mode: wgpu::PresentMode::Fifo,
         alpha_mode: wgpu::CompositeAlphaMode::Auto,
-        view_formats: vec![wgpu::TextureFormat::Rgba8UnormSrgb],
+        view_formats: vec![wgpu::TextureFormat::Bgra8UnormSrgb],
+        desired_maximum_frame_latency: 1,
     };
 
     surface.configure(&device, &config);
@@ -351,8 +361,8 @@ fn main() {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            view_formats: &[ wgpu::TextureFormat::Rgba8UnormSrgb ],
+            format: wgpu::TextureFormat::Bgra8UnormSrgb,
+            view_formats: &[ wgpu::TextureFormat::Bgra8UnormSrgb ],
             // TEXTURE_BINDING tells wgpu that we want to use this texture in shaders
             // COPY_DST means that we want to copy data to this texture
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
@@ -361,14 +371,14 @@ fn main() {
     );
 
     queue.write_texture(
-        wgpu::ImageCopyTexture {
+        wgpu::TexelCopyTextureInfo {
             texture: &triangle_texture,
             mip_level: 0,
             origin: wgpu::Origin3d::ZERO,
             aspect: wgpu::TextureAspect::All,
         },
         &triangle_texture_rgba,
-        wgpu::ImageDataLayout {
+        wgpu::TexelCopyBufferLayout {
             offset: 0,
             bytes_per_row: Some(4 * triangle_texture_dimensions.0),
             rows_per_image: Some(triangle_texture_dimensions.1),
@@ -640,19 +650,21 @@ fn main() {
         layout: Some(&rtt_render_pipeline_layout),
         vertex: wgpu::VertexState {
             module: &shader,
-            entry_point: "vs_main",
+            entry_point: Some("vs_main"),
             buffers: &[
                 Vertex::desc(),
             ],
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
         },
         fragment: Some(wgpu::FragmentState {
             module: &shader,
-            entry_point: "fs_main",
+            entry_point: Some("fs_main"),
             targets: &[Some(wgpu::ColorTargetState {
                 format: config.format,
                 blend: Some(wgpu::BlendState::REPLACE),
                 write_mask: wgpu::ColorWrites::ALL,
             })],
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
         }),
         primitive: wgpu::PrimitiveState {
             topology: wgpu::PrimitiveTopology::TriangleList,
@@ -669,6 +681,7 @@ fn main() {
         }),
         multisample: wgpu::MultisampleState::default(),
         multiview: None,
+        cache: None,
     });
 
     let mut camera = Camera {
@@ -684,12 +697,12 @@ fn main() {
 
     let mut camera_controller = CameraController::new();
 
-    event_loop.run(move |event, _, control_flow| match event {
+    let _result = event_loop.run(move |event, active_loop| match event {
         Event::WindowEvent {
             ref event,
             window_id,
         } if window_id == window.id() => match event {
-            WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
+            WindowEvent::CloseRequested => active_loop.exit(),
 
             WindowEvent::Resized(physical_size) => {
                 let new_size = *physical_size;
@@ -734,93 +747,49 @@ fn main() {
                 }
             },
 
-            WindowEvent::ScaleFactorChanged { scale_factor, new_inner_size, .. } => {
-                let new_size = **new_inner_size;
-
-                if new_size.width > 0 && new_size.height > 0 {
-                    config.width = new_size.width * (*scale_factor as u32);
-                    config.height = new_size.height * (*scale_factor as u32);
-
-                    surface.configure(&device, &config);
-
-                    camera.set_aspect_ratio((config.width / config.height) as f32 * (*scale_factor as f32));
-
-                    let rtt_texture = create_rtt_target_texture(&config, &device);
-                    let rtt_texture_view1 = rtt_texture.create_view(&wgpu::TextureViewDescriptor::default());
-                    rtt_texture_view2 = rtt_texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-                    let rtt_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-                        address_mode_u: wgpu::AddressMode::ClampToEdge,
-                        address_mode_v: wgpu::AddressMode::ClampToEdge,
-                        address_mode_w: wgpu::AddressMode::ClampToEdge,
-                        mag_filter: wgpu::FilterMode::Linear,
-                        min_filter: wgpu::FilterMode::Nearest,
-                        mipmap_filter: wgpu::FilterMode::Nearest,
-                        ..Default::default()
-                    });
-
-                    rtt_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                        layout: &rtt_bind_group_layout,
-                        entries: &[
-                            wgpu::BindGroupEntry {
-                                binding: 0,
-                                resource: wgpu::BindingResource::TextureView(&rtt_texture_view1),
-                            },
-                            wgpu::BindGroupEntry {
-                                binding: 1,
-                                resource: wgpu::BindingResource::Sampler(&rtt_sampler),
-                            }
-                        ],
-                        label: Some("RTT bind group"),
-                    });
-
-                    depth_view = create_depth_stencil_texture(&config, &device);
-                }
-            },
-
             WindowEvent::KeyboardInput {
-                input: KeyboardInput {
+                event: KeyEvent {
+                    physical_key,
                     state,
-                    virtual_keycode: Some(key_code),
                     ..
                 },
                 ..
             } => {
                 if *state == ElementState::Pressed {
-                    match key_code {
-                        VirtualKeyCode::W => {
+                    match physical_key {
+                        PhysicalKey::Code(KeyCode::KeyW) => {
                             camera_controller.start_move_forward();
                         },
 
-                        VirtualKeyCode::S => {
+                        PhysicalKey::Code(KeyCode::KeyS) => {
                             camera_controller.start_move_back();
                         },
 
-                        VirtualKeyCode::A => {
+                        PhysicalKey::Code(KeyCode::KeyA) => {
                             camera_controller.start_move_left();
                         },
 
-                        VirtualKeyCode::D => {
+                        PhysicalKey::Code(KeyCode::KeyD) => {
                             camera_controller.start_move_right();
                         },
 
                         _ => (),
                     }
                 } else if *state == ElementState::Released {
-                    match key_code {
-                        VirtualKeyCode::W => {
+                    match physical_key {
+                        PhysicalKey::Code(KeyCode::KeyW) => {
                             camera_controller.stop_move_forward();
                         },
 
-                        VirtualKeyCode::S => {
+                        PhysicalKey::Code(KeyCode::KeyS) => {
                             camera_controller.stop_move_back();
                         },
 
-                        VirtualKeyCode::A => {
+                        PhysicalKey::Code(KeyCode::KeyA) => {
                             camera_controller.stop_move_left();
                         },
 
-                        VirtualKeyCode::D => {
+                        PhysicalKey::Code(KeyCode::KeyD) => {
                             camera_controller.stop_move_right();
                         },
 
@@ -845,120 +814,125 @@ fn main() {
                 );
             },
 
+            WindowEvent::RedrawRequested => {
+                // render
+                let output = surface.get_current_texture().unwrap();
+
+                let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+                let mut command_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Render command encoder"),
+                });
+
+                camera_controller.update(&mut camera);
+
+                camera_uniform.projection = *camera.projection_matrix.as_ref();
+                camera_uniform.view = *camera.view_matrix.as_ref();
+
+                {
+                    let mut render_pass = command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some("First render pass"),
+
+                        color_attachments: &[
+                            Some(wgpu::RenderPassColorAttachment {
+                                view: &rtt_texture_view2,
+                                resolve_target: None,
+                                ops: wgpu::Operations {
+                                    load: wgpu::LoadOp::Clear(
+                                        wgpu::Color {
+                                            r: 1.0,
+                                            g: 1.0,
+                                            b: 1.0,
+                                            a: 1.0,
+                                        }
+                                    ),
+                                    store: wgpu::StoreOp::Store,
+                                },
+                                depth_slice: None,
+                            }
+                        )],
+
+                        depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                            view: &depth_view,
+                            depth_ops: Some(wgpu::Operations {
+                                load: wgpu::LoadOp::Clear(1.0),
+                                store: wgpu::StoreOp::Store,
+                            }),
+                            stencil_ops: None,
+                        }),
+
+                        occlusion_query_set: None,
+                        timestamp_writes: None,
+                    });
+
+                    render_pass.set_pipeline(&rtt_render_pipeline);
+
+                    render_pass.set_bind_group(0, &rtt_camera_bind_group, &[]);
+                    render_pass.set_bind_group(1, &triangle_bind_group, &[]);
+
+                    render_pass.set_vertex_buffer(0, triangle_vertex_buffer.slice(..));
+                    render_pass.set_index_buffer(triangle_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+
+                    render_pass.draw_indexed(0..(TRIANGLE_INDICES.len() as u32), 0, 0..1);
+                }
+
+                {
+                    let mut render_pass = command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some("Final render pass"),
+
+                        color_attachments: &[
+                            // This is what @location(0) in the fragment shader targets
+                            Some(wgpu::RenderPassColorAttachment {
+                                view: &view,
+                                resolve_target: None,
+                                ops: wgpu::Operations {
+                                    load: wgpu::LoadOp::Clear(
+                                        wgpu::Color {
+                                            r: 0.1,
+                                            g: 0.2,
+                                            b: 0.3,
+                                            a: 1.0,
+                                        }
+                                    ),
+                                    store: wgpu::StoreOp::Store,
+                                },
+                                depth_slice: None,
+                            }
+                        )],
+
+                        depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                            view: &depth_view,
+                            depth_ops: Some(wgpu::Operations {
+                                load: wgpu::LoadOp::Clear(1.0),
+                                store: wgpu::StoreOp::Store,
+                            }),
+                            stencil_ops: None,
+                        }),
+                        occlusion_query_set: None,
+                        timestamp_writes: None,
+                    });
+
+                    queue.write_buffer(&camera_buffer, 0, bytemuck::bytes_of(&camera_uniform));
+
+                    render_pass.set_pipeline(&rtt_render_pipeline);
+
+                    render_pass.set_bind_group(0, &camera_bind_group, &[]);
+                    render_pass.set_bind_group(1, &rtt_bind_group, &[]);
+
+                    render_pass.set_vertex_buffer(0, cube_vertex_buffer.slice(..));
+                    render_pass.set_index_buffer(cube_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+
+                    render_pass.draw_indexed(0..(CUBE_INDICES.len() as u32), 0, 0..1);
+                }
+
+                queue.submit(Some(command_encoder.finish()));
+
+                output.present();
+
+                window.request_redraw();
+            },
+
             _ => {}
-        },
-
-        Event::RedrawRequested(window_id) if window_id == window.id() => {
-            // render
-            let output = surface.get_current_texture().unwrap();
-
-            let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-            let mut command_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Render command encoder"),
-            });
-
-            camera_controller.update(&mut camera);
-
-            camera_uniform.projection = *camera.projection_matrix.as_ref();
-            camera_uniform.view = *camera.view_matrix.as_ref();
-
-            {
-                let mut render_pass = command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("First render pass"),
-
-                    color_attachments: &[
-                        Some(wgpu::RenderPassColorAttachment {
-                            view: &rtt_texture_view2,
-                            resolve_target: None,
-                            ops: wgpu::Operations {
-                                load: wgpu::LoadOp::Clear(
-                                    wgpu::Color {
-                                        r: 1.0,
-                                        g: 1.0,
-                                        b: 1.0,
-                                        a: 1.0,
-                                    }
-                                ),
-                                store: true,
-                            },
-                        }
-                    )],
-
-                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                        view: &depth_view,
-                        depth_ops: Some(wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(1.0),
-                            store: true,
-                        }),
-                        stencil_ops: None,
-                    }),
-                });
-
-                render_pass.set_pipeline(&rtt_render_pipeline);
-
-                render_pass.set_bind_group(0, &rtt_camera_bind_group, &[]);
-                render_pass.set_bind_group(1, &triangle_bind_group, &[]);
-
-                render_pass.set_vertex_buffer(0, triangle_vertex_buffer.slice(..));
-                render_pass.set_index_buffer(triangle_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-
-                render_pass.draw_indexed(0..(TRIANGLE_INDICES.len() as u32), 0, 0..1);
-            }
-
-            {
-                let mut render_pass = command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("Final render pass"),
-
-                    color_attachments: &[
-                        // This is what @location(0) in the fragment shader targets
-                        Some(wgpu::RenderPassColorAttachment {
-                            view: &view,
-                            resolve_target: None,
-                            ops: wgpu::Operations {
-                                load: wgpu::LoadOp::Clear(
-                                    wgpu::Color {
-                                        r: 0.1,
-                                        g: 0.2,
-                                        b: 0.3,
-                                        a: 1.0,
-                                    }
-                                ),
-                                store: true,
-                            },
-                        }
-                    )],
-
-                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                        view: &depth_view,
-                        depth_ops: Some(wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(1.0),
-                            store: true,
-                        }),
-                        stencil_ops: None,
-                    }),
-                });
-
-                queue.write_buffer(&camera_buffer, 0, bytemuck::bytes_of(&camera_uniform));
-
-                render_pass.set_pipeline(&rtt_render_pipeline);
-
-                render_pass.set_bind_group(0, &camera_bind_group, &[]);
-                render_pass.set_bind_group(1, &rtt_bind_group, &[]);
-
-                render_pass.set_vertex_buffer(0, cube_vertex_buffer.slice(..));
-                render_pass.set_index_buffer(cube_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-
-                render_pass.draw_indexed(0..(CUBE_INDICES.len() as u32), 0, 0..1);
-            }
-
-            queue.submit(Some(command_encoder.finish()));
-
-            output.present();
-        },
-
-        Event::MainEventsCleared => {
-            window.request_redraw();
         },
 
         _ => {}
